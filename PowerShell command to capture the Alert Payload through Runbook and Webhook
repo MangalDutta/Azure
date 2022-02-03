@@ -1,0 +1,68 @@
+## Example PowerShell code to use in a runbook to handle parsing of both classic and new metric alerts.
+
+[OutputType("PSAzurePayloadAlertResponse")]
+
+param
+(
+    [Parameter (Mandatory=$false)]
+    [object] $WebhookData
+)
+
+# Use the below print command to check the input payload to this runbook. 
+#write-output $webhookdata.WebhookName
+#Write-Output $webhookdata.RequestBody
+#write-output $webhookdata.RequestHeader
+
+
+if ($WebhookData)
+{
+    # Get the data object from WebhookData.
+	$RequestBody = ConvertFrom-Json $WebhookData.RequestBody #First you need to convert the Json payload (in my case it's RequestBody) to PS object to process further. 
+	#Write-Output $RequestBody	#Print command to check the converted PS obeject data to select the required\specific objects. 
+	$requestData = $RequestBody.data.context.activityLog #
+	#Write-Output $requestData
+	$timeStamp =$requestData.submissionTimestamp 
+	$resourseInfo =$requestData.resourceId
+	$whoCalled =$requestData.caller
+	$UniqueId =$requestData.correlationId    
+	$StatusCheck =$requestData.level  
+    $subscriptions = $resourseInfo.Split("/")[2]
+    $resourceGroups = $resourseInfo.Split("/")[4]
+    $databaseAccounts = $resourseInfo.Split("/")[8]
+
+# Conversion from String time to DateTime format 	
+
+#$string = “the scripts”
+#$timeStamp = $time.Substring(0,$time.Length-13)
+#Write-Output $timeStamp
+#the script
+	
+# print all requeried fileds for confirmation 
+	Write-Output $subscriptions
+	Write-Output $resourceGroups
+	Write-Output $databaseAccounts
+	Write-Output $timeStamp
+	#Write-Output $resourseInfo
+	Write-Output $whoCalled
+	Write-Output $StatusCheck  
+	Write-Output $UniqueId  
+
+# connect to database 
+$dbConn = New-Object System.Data.SqlClient.SqlConnection 
+$dbConn.ConnectionString = "Server=tcp:azuresqldbworkshop.database.windows.net,1433;Initial Catalog=AzureSQLDBWorkshop;Persist Security Info=False;User ID=azuresqldbworkshop;Password=azuresqldb@12345;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;" 
+$dbConn.Open() 
+
+# construct command 
+$dbCmd = New-Object System.Data.SqlClient.SqlCommand 
+$dbCmd.Connection = $dbConn 
+#Insert SQL Query: 
+$tableName = "[dbo].[key_rotation_events]" 
+$insertquery="INSERT INTO $tableName ([rotationTS],[subscription],[resourceGroup],[userID],[accountName],[correlationID],[statusID]) VALUES ('$timeStamp','$subscriptions','$resourceGroups','$whoCalled','$databaseAccounts','$UniqueId','$StatusCheck')"
+$dbCmd.CommandText = $insertquery 
+$dbCmd.ExecuteNonQuery() 
+
+}  
+else {
+    # Error
+    Write-Error "This runbook is meant to be started from an Azure alert webhook only."
+}
